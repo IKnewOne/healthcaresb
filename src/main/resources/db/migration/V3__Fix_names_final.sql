@@ -1,0 +1,1 @@
+RENAME TABLE patient_doctor_summary to patient_doctor_data;
