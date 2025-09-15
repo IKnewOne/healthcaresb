@@ -1,4 +1,4 @@
-package knewone.healthcaresb.doctor.persistence;
+package knewone.healthcaresb.doctor;
 
 import knewone.healthcaresb.doctor.persistence.entity.Doctor;
 import knewone.healthcaresb.doctor.persistence.repository.DoctorRepository;

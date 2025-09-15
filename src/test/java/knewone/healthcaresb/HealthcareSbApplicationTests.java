@@ -1,6 +1,6 @@
 package knewone.healthcaresb;
 
-import knewone.healthcaresb.doctor.persistence.DoctorService;
+import knewone.healthcaresb.doctor.DoctorService;
 import knewone.healthcaresb.doctor.persistence.entity.Doctor;
 import knewone.healthcaresb.patient.PatientService;
 import knewone.healthcaresb.patient.persistence.entity.Patient;
