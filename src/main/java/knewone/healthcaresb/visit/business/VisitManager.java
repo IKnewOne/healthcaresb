@@ -5,8 +5,6 @@ import knewone.healthcaresb.doctor.persistence.repository.DoctorRepository;
 import knewone.healthcaresb.patient.business.dto.DoctorDTO;
 import knewone.healthcaresb.patient.business.dto.VisitDTO;
 import knewone.healthcaresb.patient.persistence.entity.Patient;
-import knewone.healthcaresb.patient.persistence.entity.PatientDoctorData;
-import knewone.healthcaresb.patient.persistence.repository.PatientDoctorDataRepository;
 import knewone.healthcaresb.patient.persistence.repository.PatientRepository;
 import knewone.healthcaresb.visit.communication.dto.CreateVisitRequest;
 import knewone.healthcaresb.visit.persistence.entity.Visit;
@@ -29,7 +27,6 @@ public class VisitManager {
     private final VisitRepository visitRepository;
     private final DoctorRepository doctorRepository;
     private final PatientRepository patientRepository;
-    private final PatientDoctorDataRepository patientDoctorDataRepository;
 
     @Transactional // Hibernate deals with race condition by itself
     public VisitDTO createVisit(CreateVisitRequest request) {
@@ -70,30 +67,10 @@ public class VisitManager {
         visit.setEndDateTime(end);
 
         try {
-            visit = visitRepository.save(visit);
+            visitRepository.save(visit);
         } catch (DataIntegrityViolationException e) {
             // This is only the missing patient id right now
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST);
-        }
-
-        // It's infinitely cheaper to calculate this once instead of doing the math in the search request.
-        // Upside is that it's called less often than search too
-        Optional<PatientDoctorData> summaryOpt = patientDoctorDataRepository.findByPatientIdAndDoctorId(patient.getId(), doctor.getId());
-        if (summaryOpt.isPresent()) {
-            PatientDoctorData summary = summaryOpt.get();
-
-            // Update if this is later
-            if (summary.getLastVisit() == null || visit.getStartDateTime().isAfter(summary.getLastVisit().getStartDateTime())) {
-                summary.setLastVisit(visit);
-                patientDoctorDataRepository.save(summary);
-            }
-
-        } else {
-            PatientDoctorData summary = new PatientDoctorData(patient, doctor, visit);
-            patientDoctorDataRepository.save(summary);
-
-            doctor.setTotalPatients(doctor.getTotalPatients() + 1);
-            doctor = doctorRepository.save(doctor);
         }
 
         // These could use mappers and we could use dtos everywhere in place of entities, but it's a demo and only one use soooo
