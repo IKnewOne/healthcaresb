@@ -35,17 +35,13 @@ public class PatientJdbcRepositoryImpl implements PatientJdbcRepository {
                         JOIN visit v ON v.patient_id = p.id
                         JOIN doctor d ON d.id = v.doctor_id
                 """ + where + """
-                    ORDER BY p.first_name, p.last_name
                 ),
                 paginated_patients AS (
                     SELECT DISTINCT fp.patient_id
                     FROM filtered_patients fp
                     LIMIT :limit OFFSET :offset
                 ),
-                total_count AS (
-                     SELECT COUNT(*) AS cnt
-                     FROM (SELECT DISTINCT patient_id FROM filtered_patients) up
-                ),
+                total_count AS ( SELECT COUNT(DISTINCT patient_id) AS cnt FROM filtered_patients ),
                 ranked_visits AS (
                     SELECT v.*,
                            ROW_NUMBER() OVER (
@@ -53,15 +49,12 @@ public class PatientJdbcRepositoryImpl implements PatientJdbcRepository {
                                ORDER BY v.start_date_time DESC, v.id DESC
                            ) AS rn
                     FROM visit v
-                    WHERE v.patient_id IN (SELECT DISTINCT patient_id FROM paginated_patients)
+                    WHERE v.patient_id IN (SELECT patient_id FROM paginated_patients)
                 ),
                 doctor_patient_counts AS (
                     SELECT v.doctor_id, COUNT(DISTINCT v.patient_id) AS total_patients
                     FROM visit v
-                    WHERE v.doctor_id IN (
-                        SELECT DISTINCT rv.doctor_id
-                        FROM ranked_visits rv
-                    )
+                    WHERE v.doctor_id IN ( SELECT DISTINCT rv.doctor_id FROM ranked_visits rv )
                     GROUP BY v.doctor_id
                 )
                 SELECT p.id AS patient_id,
@@ -81,7 +74,9 @@ public class PatientJdbcRepositoryImpl implements PatientJdbcRepository {
                 JOIN doctor d ON d.id = rv.doctor_id
                 JOIN doctor_patient_counts dpc ON d.id = dpc.doctor_id
                 CROSS JOIN total_count tc
-                """ + where;
+                """ + where + """
+                ORDER BY patient_first, patient_last""";
+
 
         params.addValue("limit", request.getSize());
         params.addValue("offset", request.getPage() * request.getSize());
