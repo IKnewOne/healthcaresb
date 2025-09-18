@@ -38,7 +38,7 @@ public class PatientJdbcRepositoryImpl implements PatientJdbcRepository {
                     ORDER BY p.first_name, p.last_name
                 ),
                 paginated_patients AS (
-                    SELECT DISTINCT fp.patient_id, fp.doctor_id
+                    SELECT DISTINCT fp.patient_id
                     FROM filtered_patients fp
                     LIMIT :limit OFFSET :offset
                 ),
@@ -56,10 +56,13 @@ public class PatientJdbcRepositoryImpl implements PatientJdbcRepository {
                     WHERE v.patient_id IN (SELECT DISTINCT patient_id FROM paginated_patients)
                 ),
                 doctor_patient_counts AS (
-                    SELECT doctor_id, COUNT(DISTINCT patient_id) AS total_patients
+                    SELECT v.doctor_id, COUNT(DISTINCT v.patient_id) AS total_patients
                     FROM visit v
-                    WHERE v.doctor_id IN (SELECT DISTINCT doctor_id FROM paginated_patients)
-                    GROUP BY doctor_id
+                    WHERE v.doctor_id IN (
+                        SELECT DISTINCT rv.doctor_id
+                        FROM ranked_visits rv
+                    )
+                    GROUP BY v.doctor_id
                 )
                 SELECT p.id AS patient_id,
                        p.first_name AS patient_first,
