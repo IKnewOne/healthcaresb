@@ -74,8 +74,8 @@ public class PatientJdbcRepositoryImpl implements PatientJdbcRepository {
                 JOIN doctor d ON d.id = rv.doctor_id
                 JOIN doctor_patient_counts dpc ON d.id = dpc.doctor_id
                 CROSS JOIN total_count tc
-                """ + where + """
-                ORDER BY patient_first, patient_last""";
+                ORDER BY patient_first, patient_last
+                """;
 
 
         params.addValue("limit", request.getSize());
