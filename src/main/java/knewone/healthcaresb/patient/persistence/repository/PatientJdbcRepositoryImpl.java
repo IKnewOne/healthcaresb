@@ -28,30 +28,23 @@ public class PatientJdbcRepositoryImpl implements PatientJdbcRepository {
             where.append(" AND d.id IN (:doctorIds)");
             params.addValue("doctorIds", request.getDoctorIds());
         }
-
-        // count
-        String countSql = """
-                    SELECT COUNT(DISTINCT p.id)
-                    FROM patient p
-                    JOIN visit v ON v.patient_id = p.id
-                    JOIN doctor d ON d.id = v.doctor_id
-                """ + where;
-
-        Long count = jdbcTemplate.queryForObject(countSql, params, Long.class);
-        if (count == 0) return new PatientResponse(List.of(), 0);
-
-
         String sql = """
-                    -- Broken pagination if we start anywhere else
-                    WITH filtered_patients AS (
-                        SELECT p.id
+                WITH filtered_patients AS (
+                        SELECT DISTINCT p.id as patient_id, p.first_name, p.last_name, d.id as doctor_id
                         FROM patient p
                         JOIN visit v ON v.patient_id = p.id
                         JOIN doctor d ON d.id = v.doctor_id
                 """ + where + """
-                    GROUP BY p.id
                     ORDER BY p.first_name, p.last_name
+                ),
+                paginated_patients AS (
+                    SELECT DISTINCT fp.patient_id, fp.doctor_id
+                    FROM filtered_patients fp
                     LIMIT :limit OFFSET :offset
+                ),
+                total_count AS (
+                     SELECT COUNT(*) AS cnt
+                     FROM (SELECT DISTINCT patient_id FROM filtered_patients) up
                 ),
                 ranked_visits AS (
                     SELECT v.*,
@@ -60,10 +53,12 @@ public class PatientJdbcRepositoryImpl implements PatientJdbcRepository {
                                ORDER BY v.start_date_time DESC, v.id DESC
                            ) AS rn
                     FROM visit v
+                    WHERE v.patient_id IN (SELECT DISTINCT patient_id FROM paginated_patients)
                 ),
                 doctor_patient_counts AS (
                     SELECT doctor_id, COUNT(DISTINCT patient_id) AS total_patients
-                    FROM visit
+                    FROM visit v
+                    WHERE v.doctor_id IN (SELECT DISTINCT doctor_id FROM paginated_patients)
                     GROUP BY doctor_id
                 )
                 SELECT p.id AS patient_id,
@@ -75,25 +70,28 @@ public class PatientJdbcRepositoryImpl implements PatientJdbcRepository {
                        d.id AS doctor_id,
                        d.first_name AS doctor_first,
                        d.last_name AS doctor_last,
-                       dpc.total_patients
-                FROM filtered_patients fp
-                JOIN patient p ON p.id = fp.id
-                JOIN ranked_visits rv ON rv.patient_id = p.id AND rv.rn = 1
+                       dpc.total_patients,
+                       tc.cnt AS total_count
+                FROM paginated_patients pp
+                JOIN patient p ON p.id = pp.patient_id
+                JOIN ranked_visits rv ON rv.patient_id = pp.patient_id AND rv.rn = 1
                 JOIN doctor d ON d.id = rv.doctor_id
                 JOIN doctor_patient_counts dpc ON d.id = dpc.doctor_id
-                """ + where + """
-                    ORDER BY p.first_name, p.last_name
-                """;
+                CROSS JOIN total_count tc
+                """ + where;
 
         params.addValue("limit", request.getSize());
         params.addValue("offset", request.getPage() * request.getSize());
 
-        // 3️⃣ Map rows to PatientDTO with aggregated visits
         List<Map<String, Object>> rows = jdbcTemplate.queryForList(sql, params);
+
+        long totalCount = 0;
 
         Map<Long, PatientDTO> patientMap = new LinkedHashMap<>();
         for (Map<String, Object> row : rows) {
-            Long patientId = ((Number) row.get("patient_id")).longValue();
+            if (totalCount == 0) { totalCount = (long) row.get("total_count"); }
+
+            Long patientId = (Long) row.get("patient_id");
 
             PatientDTO patientDTO = patientMap.computeIfAbsent(patientId, id -> new PatientDTO(
                     (String) row.get("patient_first"),
@@ -116,6 +114,6 @@ public class PatientJdbcRepositoryImpl implements PatientJdbcRepository {
             patientDTO.getLastVisits().add(visitDTO);
         }
 
-        return new PatientResponse(new ArrayList<>(patientMap.values()), count);
+        return new PatientResponse(new ArrayList<>(patientMap.values()), totalCount);
     }
 }
